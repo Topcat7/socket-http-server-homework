@@ -1,6 +1,7 @@
 import socket
 import sys
 import os
+import mimetypes
 
 def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
     """
@@ -26,9 +27,7 @@ def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
             ])
 
 def parse_request(request):
-    
     method, uri, version = request.split("\r\n")[0].split(" ")
-
     if method != "GET":
         raise NotImplementedError
 
@@ -50,9 +49,12 @@ def response_not_found():
     # TODO: Construct and return a 404 "not found" response
     # You can re-use most of the code from the 405 Method Not
     # Allowed response.
+    return b"\r\n".join([
+                b"HTTP/1.1 404 Not Found",
+                b"",
+                b"Response not found!",
+            ])
 
-    pass
-    
 
 def resolve_uri(uri):
     """
@@ -88,10 +90,34 @@ def resolve_uri(uri):
 
     # Hint: When opening a file, use open(filename, "rb") to open and read the
     # file as a stream of bytes.
+    if not os.path.exists(uri):
+        raise NameError
+    elif os.path.isfile(uri):
 
-    content = b"not implemented"
-    mime_type = b"not implemented"
-
+        with open(uri, 'rb') as f:
+            content = f.read()
+            if uri.endswith('.py'):
+                mime_type = b'text/x-python'
+            else:
+                mime_type = mimetypes.guess_type(uri)[0].encode()
+    elif os.path.isdir(uri):
+        dirnames = []
+        filenames = []
+        with os.scandir(uri) as scan:
+            for entry in scan:
+                if entry.is_file():
+                    filenames.append(entry.name)
+                else:
+                    dirnames.append(entry.name)
+            files = ', '.join(filenames)
+            if len(dirnames) > 1:
+                dirs = '/, '.join(dirnames)
+            elif len(dirnames) == 1:
+                dirs = '{}/, '.format(dirnames[0])
+            else:
+                dirs = ''
+            content = (dirs + files).encode()
+            mime_type = b'text/plain'
     return content, mime_type
 
 
@@ -126,8 +152,12 @@ def server(log_buffer=sys.stderr):
                     # specified by uri can't be found. If it does raise a
                     # NameError, then let response get response_not_found()
                     # instead of response_ok()
-                    body, mimetype = resolve_uri(uri)
-                    response = response_ok(body=body, mimetype=mimetype)
+                    try:
+                        body, mimetype = resolve_uri(uri)
+                    except NameError:
+                        response = response_not_found()
+                    else:
+                        response = response_ok(body=body, mimetype=mimetype)
 
                 conn.sendall(response)
             finally:
@@ -141,5 +171,3 @@ def server(log_buffer=sys.stderr):
 if __name__ == '__main__':
     server()
     sys.exit(0)
-
-
